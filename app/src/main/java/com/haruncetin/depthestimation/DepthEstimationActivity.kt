@@ -35,6 +35,7 @@ class DepthEstimationActivity : AppCompatActivity() {
     private var spinner: Spinner? = null
     private var viewOriginal: PreviewView? = null
     private var viewDepth: SurfaceView? = null
+    private var occupancyGridView: OccupancyGridView? = null // NEW view
     private var btnFlipCamera: FloatingActionButton? = null
     private var originalView: Preview? = null
     private var depthAnalysisView: ImageAnalysis? = null
@@ -43,6 +44,7 @@ class DepthEstimationActivity : AppCompatActivity() {
     private lateinit var frameAnalyser: FrameAnalyser
 
     private var useFrontCamera = false
+    private var currentMapType = MapType.DEPTHVIEW_GRAYSCALE // track selected mode
     private val REQUEST_CODE_PERMISSIONS = 1001
 
     private val REQUIRED_PERMISSIONS = arrayOf(
@@ -57,6 +59,7 @@ class DepthEstimationActivity : AppCompatActivity() {
 
         viewOriginal = findViewById(R.id.view_original)
         viewDepth = findViewById(R.id.view_depth)
+        occupancyGridView = findViewById(R.id.view_occupancy_grid) // Needs to be added in layout XML
         btnFlipCamera = findViewById(R.id.fab_flip_camera)
         spinner = findViewById(R.id.spinner)
 
@@ -76,24 +79,40 @@ class DepthEstimationActivity : AppCompatActivity() {
                 position: Int,
                 id: Long
             ) {
-                frameAnalyser = if (position == 0)
-                    FrameAnalyser(MidasNetSmall(MapType.DEPTHVIEW_GRAYSCALE), viewDepth!!)
-                else
-                    FrameAnalyser(MidasNetSmall(MapType.DEPTHVIEW_HEATMAP), viewDepth!!)
+                currentMapType = when (position) {
+                    0 -> MapType.DEPTHVIEW_GRAYSCALE
+                    1 -> MapType.DEPTHVIEW_HEATMAP
+                    else -> MapType.OCCUPANCY_GRID
+                }
+
+                if (currentMapType == MapType.OCCUPANCY_GRID) {
+                    viewDepth?.visibility = View.GONE
+                    occupancyGridView?.visibility = View.VISIBLE
+                } else {
+                    viewDepth?.visibility = View.VISIBLE
+                    occupancyGridView?.visibility = View.GONE
+                }
+
+                frameAnalyser = FrameAnalyser(MidasNetSmall(currentMapType), viewDepth!!).apply {
+                    onGridReady = { grid ->
+                        runOnUiThread {
+                            if (currentMapType == MapType.OCCUPANCY_GRID) {
+                                occupancyGridView?.updateGrid(grid)
+                            }
+                        }
+                    }
+                }
 
                 initCamera(useFrontCamera)
             }
 
-            override fun onNothingSelected(p0: AdapterView<*>?) {
-
-            }
+            override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
 
         onBackPressedDispatcher.addCallback(
-            this /* lifecycle owner */,
+            this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    // Back is pressed... Exiting the app
                     if (doubleBackToExit) {
                         exitProcess(0)
                     }
@@ -118,10 +137,8 @@ class DepthEstimationActivity : AppCompatActivity() {
 
     private fun allPermissionsGranted(): Boolean {
         for (permission in REQUIRED_PERMISSIONS) {
-            if (ContextCompat.checkSelfPermission(
-                    this,
-                    permission
-                ) != PackageManager.PERMISSION_GRANTED
+            if (ContextCompat.checkSelfPermission(this, permission)
+                != PackageManager.PERMISSION_GRANTED
             ) {
                 return false
             }
@@ -140,8 +157,7 @@ class DepthEstimationActivity : AppCompatActivity() {
             } else {
                 Toast.makeText(
                     this,
-                    "If the required permissions are not granted, " +
-                            "the program may not work properly.",
+                    "If the required permissions are not granted, the program may not work properly.",
                     Toast.LENGTH_LONG
                 ).show()
                 finish()
@@ -182,7 +198,6 @@ class DepthEstimationActivity : AppCompatActivity() {
         val cameraFacingSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
 
         depthAnalysisView = ImageAnalysis.Builder().build()
-
         depthAnalysisView!!.setAnalyzer(Executors.newCachedThreadPool(), frameAnalyser)
 
         cameraProvider.bindToLifecycle(
