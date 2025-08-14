@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
 @ExperimentalGetImage
 class FrameAnalyser(
     private var depthModel: MidasNetSmall,
@@ -105,43 +106,10 @@ class FrameAnalyser(
             }
         }
 
-        // Step 3 – Apply smoothing
-        occupancyGrid = medianFilter(occupancyGrid)
+        // Step 3 – Apply smoothing (from DepthUtils)
+        occupancyGrid = DepthUtils.medianFilter(occupancyGrid, 3)
 
-        // Step 4 – Optional hole filling
-        occupancyGrid = fillHoles(occupancyGrid)
-    }
-
-    private fun medianFilter(grid: Array<IntArray>): Array<IntArray> {
-        val copy = Array(gridHeight) { grid[it].clone() }
-        for (y in 1 until gridHeight - 1) {
-            for (x in 1 until gridWidth - 1) {
-                val neighbors = mutableListOf<Int>()
-                for (dy in -1..1) {
-                    for (dx in -1..1) {
-                        neighbors.add(copy[y + dy][x + dx])
-                    }
-                }
-                neighbors.sort()
-                grid[y][x] = neighbors[neighbors.size / 2]
-            }
-        }
-        return grid
-    }
-
-    private fun fillHoles(grid: Array<IntArray>): Array<IntArray> {
-        val copy = Array(gridHeight) { grid[it].clone() }
-        for (y in 1 until gridHeight - 1) {
-            for (x in 1 until gridWidth - 1) {
-                if (copy[y][x] == 0) {
-                    val neighbors = listOf(copy[y - 1][x], copy[y + 1][x], copy[y][x - 1], copy[y][x + 1])
-                    val nonZeroNeighbors = neighbors.filter { it != 0 }
-                    if (nonZeroNeighbors.size >= 3) {
-                        grid[y][x] = nonZeroNeighbors.sum() / nonZeroNeighbors.size
-                    }
-                }
-            }
-        }
-        return grid
+        // Step 4 – Optional hole filling (from DepthUtils)
+        occupancyGrid = DepthUtils.fillHoles(occupancyGrid)
     }
 }
