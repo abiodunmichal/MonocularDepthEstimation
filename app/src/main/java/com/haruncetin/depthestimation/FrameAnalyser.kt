@@ -1,6 +1,5 @@
 package com.haruncetin.depthestimation
 
-import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -44,13 +43,13 @@ class FrameAnalyser(
         }
         readyToProcess = false
 
-        if (image.image != null) {
-            val bitmap = image.image!!.toBitmap(image.imageInfo.rotationDegrees)
+        image.image?.let { img ->
+            val bitmap = img.toBitmap(image.imageInfo.rotationDegrees)
             image.close()
             CoroutineScope(Dispatchers.Main).launch {
                 run(bitmap)
             }
-        }
+        } ?: image.close()
     }
 
     private fun draw(image: Bitmap) {
@@ -84,11 +83,11 @@ class FrameAnalyser(
         val output = depthModel.getDepthMap(inputImage)
         inferenceTime = depthModel.getInferenceTime()
 
-        // Build occupancy grid from depth map bitmap
+        // Build processed occupancy grid from depth map bitmap
         buildOccupancyGrid(output)
 
         withContext(Dispatchers.Main) {
-            draw(output)
+            draw(output) // currently still drawing raw depth output
             readyToProcess = true
         }
     }
@@ -97,19 +96,24 @@ class FrameAnalyser(
         // Step 1 – Scale depth to grid resolution
         val scaledDepth = Bitmap.createScaledBitmap(depthBitmap, gridWidth, gridHeight, true)
 
-        // Step 2 – Store raw depth values instead of binary threshold
+        // Step 2 – Store raw depth values (0–255 grayscale)
         for (y in 0 until gridHeight) {
             for (x in 0 until gridWidth) {
                 val pixel = scaledDepth.getPixel(x, y)
-                val depthGray = Color.red(pixel) // depth as grayscale
+                val depthGray = Color.red(pixel)
                 occupancyGrid[y][x] = depthGray
             }
         }
 
-        // Step 3 – Apply smoothing (from DepthUtils)
-        occupancyGrid = DepthUtils.medianFilter(occupancyGrid, 3)
+        // Step 3 – Apply bilateral smoothing (DepthUtilsPro)
+        occupancyGrid = DepthUtilsPro.bilateralFilter(
+            occupancyGrid,
+            radius = 2,
+            sigmaSpatial = 1.5,
+            sigmaDepth = 20.0
+        )
 
-        // Step 4 – Optional hole filling (from DepthUtils)
-        occupancyGrid = DepthUtils.fillHoles(occupancyGrid)
+        // Step 4 – Apply edge-aware hole filling (DepthUtilsPro)
+        occupancyGrid = DepthUtilsPro.fillHolesEdgeAware(occupancyGrid)
     }
 }
