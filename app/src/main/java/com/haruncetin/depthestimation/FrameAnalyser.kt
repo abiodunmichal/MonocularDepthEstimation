@@ -14,10 +14,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
 @ExperimentalGetImage
 class FrameAnalyser(
-    private var depthModel : MidasNetSmall,
+    private var depthModel: MidasNetSmall,
     private var depthView: SurfaceView
 ) : ImageAnalysis.Analyzer {
 
@@ -25,13 +24,13 @@ class FrameAnalyser(
     private var inferenceTime: Long = 0
     private var mLastTime: Long = 0
     private var fps = 0
-    private var ifps:Int = 0
+    private var ifps: Int = 0
     private var readyToProcess = true
 
-    // Occupancy grid parameters
-    private val gridWidth = 64
-    private val gridHeight = 48
-    val occupancyGrid = Array(gridHeight) { IntArray(gridWidth) { 0 } }
+    // Occupancy grid parameters – increased resolution
+    private val gridWidth = 128
+    private val gridHeight = 96
+    var occupancyGrid = Array(gridHeight) { IntArray(gridWidth) { 0 } }
 
     init {
         metrics = DepthEstimationApp.applicationContext().resources.displayMetrics
@@ -94,14 +93,55 @@ class FrameAnalyser(
     }
 
     private fun buildOccupancyGrid(depthBitmap: Bitmap) {
+        // Step 1 – Scale depth to grid resolution
         val scaledDepth = Bitmap.createScaledBitmap(depthBitmap, gridWidth, gridHeight, true)
+
+        // Step 2 – Store raw depth values instead of binary threshold
         for (y in 0 until gridHeight) {
             for (x in 0 until gridWidth) {
                 val pixel = scaledDepth.getPixel(x, y)
-                val depthGray = Color.red(pixel) // red=green=blue in grayscale depth
-                // Threshold: closer pixels marked as obstacle
-                occupancyGrid[y][x] = if (depthGray > 180) 0 else 1
+                val depthGray = Color.red(pixel) // depth as grayscale
+                occupancyGrid[y][x] = depthGray
             }
         }
+
+        // Step 3 – Apply smoothing
+        occupancyGrid = medianFilter(occupancyGrid)
+
+        // Step 4 – Optional hole filling
+        occupancyGrid = fillHoles(occupancyGrid)
+    }
+
+    private fun medianFilter(grid: Array<IntArray>): Array<IntArray> {
+        val copy = Array(gridHeight) { grid[it].clone() }
+        for (y in 1 until gridHeight - 1) {
+            for (x in 1 until gridWidth - 1) {
+                val neighbors = mutableListOf<Int>()
+                for (dy in -1..1) {
+                    for (dx in -1..1) {
+                        neighbors.add(copy[y + dy][x + dx])
+                    }
+                }
+                neighbors.sort()
+                grid[y][x] = neighbors[neighbors.size / 2]
+            }
+        }
+        return grid
+    }
+
+    private fun fillHoles(grid: Array<IntArray>): Array<IntArray> {
+        val copy = Array(gridHeight) { grid[it].clone() }
+        for (y in 1 until gridHeight - 1) {
+            for (x in 1 until gridWidth - 1) {
+                if (copy[y][x] == 0) {
+                    val neighbors = listOf(copy[y - 1][x], copy[y + 1][x], copy[y][x - 1], copy[y][x + 1])
+                    val nonZeroNeighbors = neighbors.filter { it != 0 }
+                    if (nonZeroNeighbors.size >= 3) {
+                        grid[y][x] = nonZeroNeighbors.sum() / nonZeroNeighbors.size
+                    }
+                }
+            }
+        }
+        return grid
     }
 }
