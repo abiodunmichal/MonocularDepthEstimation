@@ -93,15 +93,18 @@ class DepthEstimationActivity : AppCompatActivity() {
                     occupancyGridView?.visibility = View.GONE
                 }
 
-                frameAnalyser = FrameAnalyser(MidasNetSmall(currentMapType), viewDepth!!).apply {
-                    onGridReady = { grid ->
-                        runOnUiThread {
-                            if (currentMapType == MapType.OCCUPANCY_GRID) {
-                                occupancyGridView?.updateGrid(grid)
-                            }
-                        }
-                    }
-                }
+                frameAnalyser = FrameAnalyser(MidasNetSmall(currentMapType), viewDepth!!)
+
+// Only start the updater if OCCUPANCY_GRID mode is active
+if (currentMapType == MapType.OCCUPANCY_GRID) {
+    val handler = Handler(Looper.getMainLooper())
+    handler.post(object : Runnable {
+        override fun run() {
+            occupancyGridView?.updateGrid(frameAnalyser.occupancyGrid)
+            handler.postDelayed(this, 100) // update every 100ms
+        }
+    })
+}
 
                 initCamera(useFrontCamera)
             }
