@@ -6,7 +6,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.util.DisplayMetrics
-import android.util.Log
 import android.view.SurfaceView
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
@@ -16,7 +15,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// Image Analyser for performing depth estimation on the selected camera frames.
 @ExperimentalGetImage
 class FrameAnalyser(
     private var depthModel : MidasNetSmall,
@@ -24,33 +22,32 @@ class FrameAnalyser(
 ) : ImageAnalysis.Analyzer {
 
     private var metrics: DisplayMetrics? = null
-
     private var inferenceTime: Long = 0
     private var mLastTime: Long = 0
     private var fps = 0
     private var ifps:Int = 0
-
-    init{
-        metrics =  DepthEstimationApp.applicationContext().resources.displayMetrics
-    }
-
     private var readyToProcess = true
 
-    override fun analyze(image: ImageProxy) {
+    // Occupancy grid parameters
+    private val gridWidth = 64
+    private val gridHeight = 48
+    val occupancyGrid = Array(gridHeight) { IntArray(gridWidth) { 0 } }
 
-        // If the analyser is not ready to process the current frame, skip it.
-        if ( !readyToProcess ) {
+    init {
+        metrics = DepthEstimationApp.applicationContext().resources.displayMetrics
+    }
+
+    override fun analyze(image: ImageProxy) {
+        if (!readyToProcess) {
             image.close()
             return
         }
-
         readyToProcess = false
 
         if (image.image != null) {
-//            Log.i(MainActivity.APP_LOG_TAG, "Image.format: %d, Image.width: %d, Image.height: %d".format(image.image!!.format, image.image!!.width, image.image!!.height))
             val bitmap = image.image!!.toBitmap(image.imageInfo.rotationDegrees)
             image.close()
-            CoroutineScope( Dispatchers.Main ).launch {
+            CoroutineScope(Dispatchers.Main).launch {
                 run(bitmap)
             }
         }
@@ -70,35 +67,41 @@ class FrameAnalyser(
             canvas.drawBitmap(scaled, 0f, 0f, null)
             paint.color = Color.RED
             paint.isAntiAlias = true
-            paint.textSize = 14f * (metrics!!.densityDpi/160f) // 14dp
+            paint.textSize = 14f * (metrics!!.densityDpi / 160f)
             canvas.drawText("Inference Time : $inferenceTime ms", 50f, 80f, paint)
             canvas.drawText("FPS : $fps", 50f, 150f, paint)
             depthView.holder.unlockCanvasAndPost(canvas)
         }
         ifps++
-        if(now > (mLastTime + 1000)) {
+        if (now > (mLastTime + 1000)) {
             mLastTime = now
             fps = ifps
             ifps = 0
         }
     }
 
-    private suspend fun run(inputImage : Bitmap) = withContext(Dispatchers.Default) {
-
-        // Compute the depth for the given frame Bitmap.
+    private suspend fun run(inputImage: Bitmap) = withContext(Dispatchers.Default) {
         val output = depthModel.getDepthMap(inputImage)
         inferenceTime = depthModel.getInferenceTime()
 
-        withContext( Dispatchers.Main ) {
+        // Build occupancy grid from depth map bitmap
+        buildOccupancyGrid(output)
 
-            // Draw the depth Bitmap to the SurfaceView.
-            // Please refer to the draw function for details.
+        withContext(Dispatchers.Main) {
             draw(output)
-
-            // Notify that the current frame is processed and
-            // the pipeline is ready for the next frame.
             readyToProcess = true
+        }
+    }
 
+    private fun buildOccupancyGrid(depthBitmap: Bitmap) {
+        val scaledDepth = Bitmap.createScaledBitmap(depthBitmap, gridWidth, gridHeight, true)
+        for (y in 0 until gridHeight) {
+            for (x in 0 until gridWidth) {
+                val pixel = scaledDepth.getPixel(x, y)
+                val depthGray = Color.red(pixel) // red=green=blue in grayscale depth
+                // Threshold: closer pixels marked as obstacle
+                occupancyGrid[y][x] = if (depthGray > 180) 0 else 1
+            }
         }
     }
 }
