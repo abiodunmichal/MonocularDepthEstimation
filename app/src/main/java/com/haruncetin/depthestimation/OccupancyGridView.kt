@@ -27,7 +27,8 @@ class OccupancyGridView @JvmOverloads constructor(
 
         for (y in 0 until rows) {
             for (x in 0 until cols) {
-                paint.color = if (grid[y][x] == 1) Color.BLACK else Color.WHITE
+                val depthVal = grid[y][x] // 0–255
+                paint.color = Color.rgb(depthVal, depthVal, depthVal)
                 canvas.drawRect(
                     x * cellWidth,
                     y * cellHeight,
@@ -41,6 +42,6 @@ class OccupancyGridView @JvmOverloads constructor(
 
     fun updateGrid(newGrid: Array<IntArray>) {
         gridData = newGrid
-        invalidate() // Redraw the view
+        invalidate()
     }
 }
