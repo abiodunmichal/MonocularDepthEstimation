@@ -1,30 +1,26 @@
 package com.haruncetin.depthestimation
 
 import android.graphics.Bitmap
-import org.ddogleg.struct.FastQueue
-import boofcv.alg.tracker.klt.PyramidKltTracker // if kltPyramid is this type
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.util.DisplayMetrics
 import android.view.SurfaceView
-import org.ddogleg.struct.FastQueue
-import boofcv.abst.tracker.PointTrackerKltPyramid
-import boofcv.struct.pyramid.PyramidDiscrete
-import boofcv.struct.image.GrayF32
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import boofcv.abst.tracker.PointTracker
+import boofcv.abst.tracker.PointTrackerKltPyramid
 import boofcv.android.ConvertBitmap
 import boofcv.factory.tracker.FactoryPointTracker
 import boofcv.struct.image.GrayF32
+import org.ddogleg.struct.FastQueue
+import boofcv.struct.pyramid.PyramidDiscrete
 import georegression.struct.point.Point2D_F64
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.ddogleg.struct.FastQueue
 import kotlin.math.atan2
 
 @ExperimentalGetImage
@@ -40,7 +36,7 @@ class FrameAnalyser(
     private var ifps: Int = 0
     private var readyToProcess = true
 
-    // Occupancy grid parameters – increased resolution
+    // Occupancy grid parameters
     private val gridWidth = 128
     private val gridHeight = 96
     var occupancyGrid = Array(gridHeight) { IntArray(gridWidth) { 0 } }
@@ -107,14 +103,11 @@ class FrameAnalyser(
         val output = depthModel.getDepthMap(inputImage)
         inferenceTime = depthModel.getInferenceTime()
 
-        // Build processed occupancy grid from depth map bitmap
         buildOccupancyGrid(output)
-
-        // ==== NEW: Process motion estimation ====
         processMotion(inputImage)
 
         withContext(Dispatchers.Main) {
-            draw(output) // still drawing depth for now
+            draw(output)
             readyToProcess = true
         }
     }
@@ -140,9 +133,7 @@ class FrameAnalyser(
         occupancyGrid = DepthUtilsPro.fillHolesEdgeAware(occupancyGrid)
     }
 
-    // ==== NEW: Visual Odometry using BoofCV ====
     private fun processMotion(rgbBitmap: Bitmap) {
-        // Convert Bitmap to BoofCV GrayF32
         gray.reshape(rgbBitmap.width, rgbBitmap.height)
         ConvertBitmap.bitmapToBoof(rgbBitmap, gray, null)
 
@@ -156,8 +147,6 @@ class FrameAnalyser(
         val tracked: FastQueue<Point2D_F64> = tracker.tracksActive(null, null)
 
         val (dx, dy, dtheta) = estimateMotion(tracked)
-
-        // Send map + motion to MappingManager
         MappingManager.updateMap(occupancyGrid, dx, dy, dtheta)
 
         prevImage = gray.clone()
@@ -177,7 +166,7 @@ class FrameAnalyser(
         val avgDx = sumDx / points.size
         val avgDy = sumDy / points.size
 
-        val scale = 0.2 // cm per pixel, tune this experimentally
+        val scale = 0.2 // cm per pixel, tune experimentally
         val dxCm = avgDx * scale
         val dyCm = avgDy * scale
         val dtheta = atan2(avgDy, avgDx) * 0.01 // radians
