@@ -4,8 +4,6 @@ import android.graphics.Bitmap
 import androidx.camera.core.ExperimentalGetImage
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
-import org.tensorflow.lite.gpu.CompatibilityList
-import org.tensorflow.lite.gpu.GpuDelegateFactory
 import org.tensorflow.lite.support.common.FileUtil
 import org.tensorflow.lite.support.common.TensorOperator
 import org.tensorflow.lite.support.common.TensorProcessor
@@ -21,15 +19,15 @@ class MidasNetSmall(
     internal var mapType: MapType = MapType.DEPTHVIEW_GRAYSCALE
 ) {
     companion object {
-        private const val MODEL_NAME        = "lite-model_midas_v2_1_small_1_lite_1.tflite"
-        private const val INPUT_IMAGE_DIM   = 256
-        private const val NUM_THREADS       = 8
-        private val NORM_MEAN               = floatArrayOf(123.675f, 116.28f, 103.53f)
-        private val NORM_STD                = floatArrayOf(58.395f, 57.12f, 57.375f)
+        private const val MODEL_NAME = "lite-model_midas_v2_1_small_1_lite_1.tflite"
+        private const val INPUT_IMAGE_DIM = 256
+        private const val NUM_THREADS = 8
+        private val NORM_MEAN = floatArrayOf(123.675f, 116.28f, 103.53f)
+        private val NORM_STD = floatArrayOf(58.395f, 57.12f, 57.375f)
     }
 
     private var inferenceTime: Long = 0
-    private var interpreter : Interpreter
+    private var interpreter: Interpreter
 
     private val inputTensorProcessor = ImageProcessor.Builder()
         .add(ResizeOp(INPUT_IMAGE_DIM, INPUT_IMAGE_DIM, ResizeOp.ResizeMethod.BILINEAR))
@@ -41,15 +39,11 @@ class MidasNetSmall(
         .build()
 
     init {
+        // CPU-only interpreter options
         val interpreterOptions = Interpreter.Options().apply {
-            val compatibilityList = CompatibilityList()
-            if (compatibilityList.isDelegateSupportedOnThisDevice) {
-                val delegateOptions = GpuDelegateFactory.Options()
-                val gpuDelegate = GpuDelegateFactory.create(delegateOptions)
-                this.addDelegate(gpuDelegate)
-            }
             this.numThreads = NUM_THREADS
         }
+
         interpreter = Interpreter(
             FileUtil.loadMappedFile(
                 DepthEstimationApp.applicationContext(),
