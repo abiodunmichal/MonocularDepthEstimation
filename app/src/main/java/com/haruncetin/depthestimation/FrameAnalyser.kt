@@ -1,6 +1,8 @@
 package com.haruncetin.depthestimation
 
 import android.graphics.Bitmap
+import org.ddogleg.struct.FastQueue
+import boofcv.alg.tracker.klt.PyramidKltTracker // if kltPyramid is this type
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
