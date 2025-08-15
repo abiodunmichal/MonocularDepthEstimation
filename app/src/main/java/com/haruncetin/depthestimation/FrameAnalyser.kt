@@ -9,10 +9,17 @@ import android.view.SurfaceView
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import boofcv.abst.tracker.PointTracker
+import boofcv.android.ConvertBitmap
+import boofcv.factory.tracker.FactoryPointTracker
+import boofcv.struct.image.GrayF32
+import georegression.struct.point.Point2D_F64
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.ddogleg.struct.FastQueue
+import kotlin.math.atan2
 
 @ExperimentalGetImage
 class FrameAnalyser(
@@ -31,6 +38,17 @@ class FrameAnalyser(
     private val gridWidth = 128
     private val gridHeight = 96
     var occupancyGrid = Array(gridHeight) { IntArray(gridWidth) { 0 } }
+
+    // ==== BoofCV motion estimation additions ====
+    private val tracker: PointTracker<GrayF32> = FactoryPointTracker.kltPyramid(
+        intArrayOf(3, 5, 7),
+        200,
+        null,
+        GrayF32::class.java,
+        null
+    )
+    private var prevImage: GrayF32? = null
+    private val gray = GrayF32(1, 1)
 
     init {
         metrics = DepthEstimationApp.applicationContext().resources.displayMetrics
@@ -86,17 +104,18 @@ class FrameAnalyser(
         // Build processed occupancy grid from depth map bitmap
         buildOccupancyGrid(output)
 
+        // ==== NEW: Process motion estimation ====
+        processMotion(inputImage)
+
         withContext(Dispatchers.Main) {
-            draw(output) // currently still drawing raw depth output
+            draw(output) // still drawing depth for now
             readyToProcess = true
         }
     }
 
     private fun buildOccupancyGrid(depthBitmap: Bitmap) {
-        // Step 1 – Scale depth to grid resolution
         val scaledDepth = Bitmap.createScaledBitmap(depthBitmap, gridWidth, gridHeight, true)
 
-        // Step 2 – Store raw depth values (0–255 grayscale)
         for (y in 0 until gridHeight) {
             for (x in 0 until gridWidth) {
                 val pixel = scaledDepth.getPixel(x, y)
@@ -105,7 +124,6 @@ class FrameAnalyser(
             }
         }
 
-        // Step 3 – Apply bilateral smoothing (DepthUtilsPro)
         occupancyGrid = DepthUtilsPro.bilateralFilter(
             occupancyGrid,
             radius = 2,
@@ -113,7 +131,51 @@ class FrameAnalyser(
             sigmaDepth = 20.0
         )
 
-        // Step 4 – Apply edge-aware hole filling (DepthUtilsPro)
         occupancyGrid = DepthUtilsPro.fillHolesEdgeAware(occupancyGrid)
+    }
+
+    // ==== NEW: Visual Odometry using BoofCV ====
+    private fun processMotion(rgbBitmap: Bitmap) {
+        // Convert Bitmap to BoofCV GrayF32
+        gray.reshape(rgbBitmap.width, rgbBitmap.height)
+        ConvertBitmap.bitmapToBoof(rgbBitmap, gray, null)
+
+        if (prevImage == null) {
+            tracker.process(gray)
+            prevImage = gray.clone()
+            return
+        }
+
+        tracker.process(gray)
+        val tracked: FastQueue<Point2D_F64> = tracker.tracksActive(null, null)
+
+        val (dx, dy, dtheta) = estimateMotion(tracked)
+
+        // Send map + motion to MappingManager
+        MappingManager.updateMap(occupancyGrid, dx, dy, dtheta)
+
+        prevImage = gray.clone()
+    }
+
+    private fun estimateMotion(points: FastQueue<Point2D_F64>): Triple<Double, Double, Double> {
+        if (points.size < 5) return Triple(0.0, 0.0, 0.0)
+
+        var sumDx = 0.0
+        var sumDy = 0.0
+        for (i in 0 until points.size) {
+            val p = points[i]
+            sumDx += p.x - (prevImage!!.width / 2.0)
+            sumDy += p.y - (prevImage!!.height / 2.0)
+        }
+
+        val avgDx = sumDx / points.size
+        val avgDy = sumDy / points.size
+
+        val scale = 0.2 // cm per pixel, tune this experimentally
+        val dxCm = avgDx * scale
+        val dyCm = avgDy * scale
+        val dtheta = atan2(avgDy, avgDx) * 0.01 // radians
+
+        return Triple(dxCm, dyCm, dtheta)
     }
 }
