@@ -38,6 +38,7 @@ class FrameAnalyser(
     private val gridHeight = 96
     var occupancyGrid = Array(gridHeight) { IntArray(gridWidth) { 0 } }
 
+    // BoofCV KLT tracker
     private val tracker: PointTracker<GrayF32> = FactoryPointTracker.kltPyramid(
         intArrayOf(3, 5, 7),
         200,
@@ -139,7 +140,7 @@ class FrameAnalyser(
         }
 
         tracker.process(gray)
-        val tracked: FastQueue<Point2D_F64> = tracker.tracksActive(null, null)
+        val tracked: FastQueue<Point2D_F64> = tracker.tracksActive(null, null) as FastQueue<Point2D_F64>
 
         val (dx, dy, dtheta) = estimateMotion(tracked)
         MappingManager.updateMap(occupancyGrid, dx, dy, dtheta)
@@ -154,17 +155,19 @@ class FrameAnalyser(
         var sumDy = 0.0
         for (i in 0 until points.size()) {
             val p = points.get(i)
-            sumDx += p.x - (prevImage!!.width / 2.0)
-            sumDy += p.y - (prevImage!!.height / 2.0)
+            val x = p.x
+            val y = p.y
+            sumDx += x - (prevImage!!.width / 2.0)
+            sumDy += y - (prevImage!!.height / 2.0)
         }
 
         val avgDx = sumDx / points.size()
         val avgDy = sumDy / points.size()
 
-        val scale = 0.2
+        val scale = 0.2 // cm per pixel
         val dxCm = avgDx * scale
         val dyCm = avgDy * scale
-        val dtheta = atan2(avgDy, avgDx) * 0.01
+        val dtheta = atan2(avgDy, avgDx) * 0.01 // radians
 
         return Triple(dxCm, dyCm, dtheta)
     }
