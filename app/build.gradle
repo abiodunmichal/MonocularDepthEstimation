@@ -1,5 +1,5 @@
 plugins {
-    id 'kotlin-android' version '2.1.10'
+    id 'kotlin-android'
     id 'com.android.application'
 }
     
