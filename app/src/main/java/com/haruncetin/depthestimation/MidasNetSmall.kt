@@ -5,7 +5,7 @@ import androidx.camera.core.ExperimentalGetImage
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.gpu.CompatibilityList
-import org.tensorflow.lite.gpu.GpuDelegate
+import org.tensorflow.lite.gpu.GpuDelegateFactory
 import org.tensorflow.lite.support.common.FileUtil
 import org.tensorflow.lite.support.common.TensorOperator
 import org.tensorflow.lite.support.common.TensorProcessor
@@ -44,8 +44,9 @@ class MidasNetSmall(
         val interpreterOptions = Interpreter.Options().apply {
             val compatibilityList = CompatibilityList()
             if (compatibilityList.isDelegateSupportedOnThisDevice) {
-                val delegate = GpuDelegate(compatibilityList.bestOptionsForThisDevice)
-                this.addDelegate(delegate)
+                val delegateOptions = GpuDelegateFactory.Options()
+                val gpuDelegate = GpuDelegateFactory.create(delegateOptions)
+                this.addDelegate(gpuDelegate)
             }
             this.numThreads = NUM_THREADS
         }
