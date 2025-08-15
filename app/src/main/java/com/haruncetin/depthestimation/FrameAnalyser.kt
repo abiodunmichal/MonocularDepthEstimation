@@ -14,8 +14,8 @@ import boofcv.abst.tracker.PointTrackerKltPyramid
 import boofcv.android.ConvertBitmap
 import boofcv.factory.tracker.FactoryPointTracker
 import boofcv.struct.image.GrayF32
-import org.ddogleg.struct.FastQueue
 import boofcv.struct.pyramid.PyramidDiscrete
+import org.ddogleg.struct.FastQueue
 import georegression.struct.point.Point2D_F64
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,12 +36,11 @@ class FrameAnalyser(
     private var ifps: Int = 0
     private var readyToProcess = true
 
-    // Occupancy grid parameters
     private val gridWidth = 128
     private val gridHeight = 96
     var occupancyGrid = Array(gridHeight) { IntArray(gridWidth) { 0 } }
 
-    // ==== BoofCV motion estimation additions ====
+    // BoofCV KLT tracker
     private val tracker: PointTracker<GrayF32> = FactoryPointTracker.kltPyramid(
         intArrayOf(3, 5, 7),
         200,
@@ -114,7 +113,6 @@ class FrameAnalyser(
 
     private fun buildOccupancyGrid(depthBitmap: Bitmap) {
         val scaledDepth = Bitmap.createScaledBitmap(depthBitmap, gridWidth, gridHeight, true)
-
         for (y in 0 until gridHeight) {
             for (x in 0 until gridWidth) {
                 val pixel = scaledDepth.getPixel(x, y)
@@ -144,7 +142,7 @@ class FrameAnalyser(
         }
 
         tracker.process(gray)
-        val tracked: FastQueue<Point2D_F64> = tracker.tracksActive(null, null)
+        val tracked: FastQueue<Point2D_F64> = tracker.tracksActive(null, null) // Fixed FastQueue
 
         val (dx, dy, dtheta) = estimateMotion(tracked)
         MappingManager.updateMap(occupancyGrid, dx, dy, dtheta)
@@ -166,7 +164,7 @@ class FrameAnalyser(
         val avgDx = sumDx / points.size
         val avgDy = sumDy / points.size
 
-        val scale = 0.2 // cm per pixel, tune experimentally
+        val scale = 0.2 // cm per pixel
         val dxCm = avgDx * scale
         val dyCm = avgDy * scale
         val dtheta = atan2(avgDy, avgDx) * 0.01 // radians
