@@ -1,4 +1,4 @@
-package your.package.name
+package com.haruncetin.depthestimation
 
 import kotlin.math.cos
 import kotlin.math.sin
