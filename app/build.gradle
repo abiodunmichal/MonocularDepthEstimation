@@ -43,9 +43,11 @@ dependencies {
     implementation 'org.boofcv:boofcv-feature:0.43'
     implementation 'org.boofcv:boofcv-android:0.43'
     implementation 'org.boofcv:boofcv-recognition:0.43' // KLT tracker & recognition
+// BoofCV core libraries
+implementation "org.boofcv:boofcv-geo:0.43"
 
-    // DDogleg math library (FastQueue is here)
-    implementation 'org.ddogleg:ddogleg:0.23'
+// ddogleg data structures (for FastQueue)
+implementation "org.ddogleg:ddogleg:0.23"
 
     // AndroidX
     implementation 'androidx.core:core-ktx:1.12.0'
