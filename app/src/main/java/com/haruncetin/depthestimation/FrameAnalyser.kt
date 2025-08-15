@@ -10,11 +10,9 @@ import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import boofcv.abst.tracker.PointTracker
-import boofcv.abst.tracker.PointTrackerKltPyramid
-import boofcv.android.ConvertBitmap
 import boofcv.factory.tracker.FactoryPointTracker
+import boofcv.android.ConvertBitmap
 import boofcv.struct.image.GrayF32
-import boofcv.struct.pyramid.PyramidDiscrete
 import org.ddogleg.struct.FastQueue
 import georegression.struct.point.Point2D_F64
 import kotlinx.coroutines.CoroutineScope
@@ -40,7 +38,6 @@ class FrameAnalyser(
     private val gridHeight = 96
     var occupancyGrid = Array(gridHeight) { IntArray(gridWidth) { 0 } }
 
-    // BoofCV KLT tracker
     private val tracker: PointTracker<GrayF32> = FactoryPointTracker.kltPyramid(
         intArrayOf(3, 5, 7),
         200,
@@ -142,7 +139,7 @@ class FrameAnalyser(
         }
 
         tracker.process(gray)
-        val tracked: FastQueue<Point2D_F64> = tracker.tracksActive(null, null) // Fixed FastQueue
+        val tracked: FastQueue<Point2D_F64> = tracker.tracksActive(null, null)
 
         val (dx, dy, dtheta) = estimateMotion(tracked)
         MappingManager.updateMap(occupancyGrid, dx, dy, dtheta)
@@ -151,23 +148,23 @@ class FrameAnalyser(
     }
 
     private fun estimateMotion(points: FastQueue<Point2D_F64>): Triple<Double, Double, Double> {
-        if (points.size < 5) return Triple(0.0, 0.0, 0.0)
+        if (points.size() < 5) return Triple(0.0, 0.0, 0.0)
 
         var sumDx = 0.0
         var sumDy = 0.0
-        for (i in 0 until points.size) {
-            val p = points[i]
+        for (i in 0 until points.size()) {
+            val p = points.get(i)
             sumDx += p.x - (prevImage!!.width / 2.0)
             sumDy += p.y - (prevImage!!.height / 2.0)
         }
 
-        val avgDx = sumDx / points.size
-        val avgDy = sumDy / points.size
+        val avgDx = sumDx / points.size()
+        val avgDy = sumDy / points.size()
 
-        val scale = 0.2 // cm per pixel
+        val scale = 0.2
         val dxCm = avgDx * scale
         val dyCm = avgDy * scale
-        val dtheta = atan2(avgDy, avgDx) * 0.01 // radians
+        val dtheta = atan2(avgDy, avgDx) * 0.01
 
         return Triple(dxCm, dyCm, dtheta)
     }
